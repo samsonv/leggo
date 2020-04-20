@@ -1,0 +1,22 @@
+{
+  "name": "leggo",
+  "version": "1.0.0",
+  "description": "",
+  "main": "start.js",
+  "dependencies": {
+    "node-poweredup": "^6.1.0",
+    "pngjs": "^5.0.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "LEGO",
+    "Eggs",
+    "Easter",
+    "Fun"
+  ],
+  "author": "Samson",
+  "license": "MIT"
+}

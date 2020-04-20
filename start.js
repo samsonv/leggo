@@ -41,7 +41,7 @@ const handleKeyPress = async (hub, keypressed, lifter, spinner, pencilArm) => {
 
     switch (keypressed) {
         case "left":
-            await rotate(spinner, 7, 1);
+            await rotate(spinner, 1, 1);
             break;
         case "right":
             await rotate(spinner, 1, -1);
