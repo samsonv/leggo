@@ -2,14 +2,10 @@ const readline = require('readline');
 const PoweredUP = require("node-poweredup");
 const poweredUP = new PoweredUP.PoweredUP();
 const fs = require('fs');
+const PNG = require("pngjs").PNG;
 
 readline.emitKeypressEvents(process.stdin);
 process.stdin.setRawMode(true);
-const _self = this;
-_self.spinnerSpeed = 0;
-_self.pencilArmSpeed = 0;
-_self.color = 0;
-_self.steps = 0;
 
 poweredUP.on("discover", async (hub) => { // Wait to discover a Hub
     console.log(`Discovered ${hub.name}!`);
@@ -17,17 +13,8 @@ poweredUP.on("discover", async (hub) => { // Wait to discover a Hub
     const pencilArm = await hub.waitForDeviceAtPort("D");
     const spinner = await hub.waitForDeviceAtPort("B");
     const lifter = await hub.waitForDeviceAtPort("A");
-    const sensor = await hub.waitForDeviceAtPort("C");
 
     console.log("Connected");
-
-    sensor.on("color", (c) => {
-        if (Math.abs(c.color - _self.color) > 5) {
-            _self.steps += 1;
-            console.log("Steps: " + _self.steps);
-            _self.color = c.color;
-        }
-    });
 
     process.stdin.on('keypress', (str, key) => {
         if (key.name === "escape") {
@@ -42,146 +29,110 @@ poweredUP.scan(); // Start scanning for Hubs
 console.log("Scanning for Hubs...");
 
 const handleKeyPress = async (hub, keypressed, lifter, spinner, pencilArm) => {
-    console.log(keypressed);
+    // console.log(keypressed);
     const pencilPower = 40;
-    const spinnerPower = 40;
-    const duration = 500;
+    const spinnerPower = 18;
+    const duration = 200;
     const stop = () => {
-        spinner.setPower(0);
-        pencilArm.setPower(0);
-        lifter.setPower(0);
+        // spinner.setPower(0);
+        // pencilArm.setPower(0);
+        // lifter.setPower(0);
     };
 
     switch (keypressed) {
         case "left":
-            await moveSpinner(spinner, spinnerPower, hub, stop, 1);
-            await hub.sleep(duration);
-            stop();
+            await rotate(spinner, 7, 1);
             break;
         case "right":
-            await moveSpinner(spinner, -spinnerPower, hub, stop, 1);
+            await rotate(spinner, 1, -1);
             break;
         case "up":
-            pencilArm.setPower(pencilPower);
-            await hub.sleep(duration);
-            stop();
+            await pencilArm.rotateByDegrees(30, 20);
             break;
         case "down":
-            pencilArm.setPower(-pencilPower);
-            await hub.sleep(duration);
-            stop();
+            await pencilArm.rotateByDegrees(30, -20);
             break;
         case "n":
-            lifter.setPower(20);
-            await hub.sleep(200);
-            stop();
+            await liftDown(lifter);
             break;
         case "o":
-            lifter.setPower(-25);
-            await hub.sleep(200);
-            stop();
+            await liftUp(lifter);
             break;
         case "p":
-            let rawdata = fs.readFileSync('test.json');
-            let drawing = JSON.parse(rawdata);
-            console.log("Will draw: (" + drawing.width + " x " + drawing.height + "):");
-            for (let y = 0; y < drawing.height; y++) {
-                var line = "";
-                for (let x = 0; x < drawing.width; x++) {
-                    line += drawing.layers[0].data[x + (y * drawing.width)] === 0 ? " " : "X";
+            let data = fs.readFileSync('test.png');
+            let image = PNG.sync.read(data);
+            let pixelArray = [...image.data];
+            console.log("Will draw: (" + image.width + " x " + image.height + "):");
+            let xpos = 1;
+            let instructions = [];
+            for (let y = 0; y < image.height; y++) {
+                let wholeLine = pixelArray.slice(y * image.width * 4, y * 4 * image.width + image.width * 4);
+                var line = [];
+                for (i = 4; i < wholeLine.length; i = i + 4) {
+                    line.push(wholeLine[i - 1]);
                 }
-                console.log(line);
+
+                console.log(line.map((l) => l == 0 ? " " : "█").join(""));
+                if (line.some(x => x !== 0)) {
+                    let skipLines = 0;
+                    for (let x = 0; x < line.length; x++) {
+                        const pixel = line[x];
+                        if (pixel == 0) {
+                            skipLines++;
+                        } else {
+                            skipLines++;
+                            if ((skipLines - xpos) != 0) {
+                                instructions.push({ "name": "step", "value": (skipLines - xpos) });
+                            }
+                            instructions.push({ "name": "draw", "value": null });
+                            xpos = x + 1;
+                        }
+                    }
+                }
+                if (y < image.height - 1) {
+                    instructions.push({ "name": "nextLine", "value": null });
+                }
             }
-            for (let y = 0; y < drawing.height; y++) {
-                const flip = y % 2 != 0;
-                for (let x = 0; x < drawing.width; x++) {
-                    let index = flip
-                        ? (y * drawing.width + (drawing.width - (x + 1)))
-                        : x + (y * drawing.width);
 
-                    var shouldDraw = drawing.layers[0].data[index] != 0;
-                    process.stdout.write(shouldDraw ? "." : "_");
-
-                    if (shouldDraw) {
-                        lifter.setPower(30);
-                        await hub.sleep(300);
-                        stop();
-                        await hub.sleep(100);
-                        lifter.setPower(-30);
-                        await hub.sleep(300);
-                        stop();
-                    } else {
-                        await hub.sleep(50);
-                    }
-                    if (drawing.width - 1 != x) {
-                        await moveSpinner(spinner, flip ? 30 : -30, hub, stop, 1);
-                    }
-                }
-                console.log("");
-                if (drawing.height - 1 != y) {
-                    pencilArm.setPower(-pencilPower);
-                    await hub.sleep(duration * 3);
-                    stop();
+            for (instruction of instructions) {
+                switch (instruction.name) {
+                    case "step":
+                        process.stdout.write(".");
+                        await rotate(spinner, Math.abs(instruction.value), instruction.value > 0 ? -1 : 1)
+                        break;
+                    case "draw":
+                        process.stdout.write(".");
+                        await draw(lifter);
+                        break;
+                    case "nextLine":
+                        console.log("");
+                        await pencilArm.rotateByDegrees(60, -20);
+                        break;
+                    default:
+                        break;
                 }
             }
             break;
         case "space":
-            lifter.setPower(40);
-            await hub.sleep(150);
-            lifter.setPower(-40);
-            await hub.sleep(150);
-            stop();
+            await draw(lifter);
         default:
             break;
     }
 }
 
-const handleKeyPressTwo = async (hub, keypressed, lifter, spinner, pencilArm) => {
-    switch (keypressed) {
-        case "left":
-            _self.spinnerSpeed -= 10;
-            break;
-        case "right":
-            _self.spinnerSpeed += 10;
-            break;
-        case "down":
-            _self.pencilArmSpeed += 10;
-            break;
-        case "up":
-            _self.pencilArmSpeed -= 10;
-            break;
-        case "n":
-            lifter.setPower(25);
-            await hub.sleep(200);
-            lifter.setPower(0);
-            break;
-        case "o":
-            lifter.setPower(-25);
-            await hub.sleep(200);
-            lifter.setPower(0);
-            break;
-        case "space":
-            _self.spinnerSpeed = 0;
-            _self.pencilArmSpeed = 0;
-            break;
-        default:
-            console.log(keypressed);
-            break;
-    }
-
-    spinner.setPower(_self.spinnerSpeed);
-    pencilArm.setPower(_self.pencilArmSpeed);
-    console.log("spinner", _self.spinnerSpeed);
-    console.log("pencil", _self.pencilArmSpeed);
+async function rotate(spinner, steps, direction) {
+    // (13/4) degrees = ~111 pixels pr. 360 degrees
+    await spinner.rotateByDegrees(steps * 13, 10 * direction);
 }
 
-async function moveSpinner(spinner, spinnerPower, hub, stop, steps) {
-    _self.steps = 0;
-    spinner.setPower(spinnerPower);
-    // await hub.sleep(duration);
-    while (_self.steps < steps) {
-        await hub.sleep(5);
-    }
-    stop();
+async function draw(lifter) {
+    await lifter.rotateByDegrees(360, 10);
 }
 
+async function liftUp(lifter) {
+    await lifter.rotateByDegrees(10, -20);
+}
+
+async function liftDown(lifter) {
+    await lifter.rotateByDegrees(10, 20);
+}

@@ -1,9 +1,0 @@
-const moves = [
-    { spinner: 80, duration: 1000 }
-];
-
-for (const move of moves) {
-    move.pencil && pencilArm.setPower(move.pencil) || pencilArm.setPower(0);
-    move.spinner && spinner.setPower(move.spinner) || spinner.setPower(0);
-    await hub.sleep(move.duration || 300);
-}
